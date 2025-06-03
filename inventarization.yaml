@@ -1,0 +1,10 @@
+- name: inventory
+  hosts: servers
+
+  tasks:
+  - name: "Write hostname, IP to report file"
+    lineinfile:
+      path: "/etc/ansible/PC_INFO/{{ ansible_hostname }}.yml"
+      line: "hostname: {{ ansible_hostname }}\nIP: {{ ansible_default_ipv4.address }}"
+      create: true
+    delegate_to: 127.0.0.1
