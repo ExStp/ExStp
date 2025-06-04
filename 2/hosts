@@ -1,0 +1,6 @@
+[servers]
+192.168.1.2 ansible_user=sshuser ansible_port=2024
+192.168.2.2 ansible_user=sshuser ansible_port=2024
+[routers]
+192.168.100.2 ansible_user=net_admin ansible_password=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
+192.168.101.2 ansible_user=net_admin ansible_password=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
