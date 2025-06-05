@@ -1,0 +1,443 @@
+1. Произведите базовую настройку устройств
+HQ-RTR
+en
+conf t
+hostname hq-rtr
+ip domain-name au-team.irpo
+write memory
+BR-RTR
+en
+conf t
+hostname br-rtr
+ip domain-name au-team.irpo
+write memory
+
+HQ-SRV
+hostnamectl set-hostname hq-srv.au-team.irpo; exec bash
+HQ-CLI
+hostnamectl set-hostname hq-cli.au-team.irpo; exec bash
+BR-SRV
+hostnamectl set-hostname br-srv.au-team.irpo; exec bash
+ISP
+hostnamectl set-hostname ISP; exec bash
+
+HQ-SRV
+mkdir /etc/net/ifaces/ens20
+vim /etc/net/ifaces/ens20/options
+DISABLED=no
+TYPE=eth
+BOOTPROTO=static
+CONFIG_IPv4=yes
+vim /etc/net/ifaces/ens20/ipv4address
+192.168.1.10/26
+vim /etc/net/ifaces/ens20/ipv4route
+default via 192.168.1.1
+systemctl restart network
+BR-SRV
+mkdir /etc/net/ifaces/ens20
+vim /etc/net/ifaces/ens20/options
+DISABLED=no
+TYPE=eth
+BOOTPROTO=static
+CONFIG_IPv4=yes
+vim /etc/net/ifaces/ens20/ipv4address
+192.168.3.10/27
+vim /etc/net/ifaces/ens20/ipv4route
+default via 192.168.3.1
+systemctl restart network
+HQ-CLI
+mkdir /etc/net/ifaces/ens20
+vim /etc/net/ifaces/ens20/options
+DISABLED=no
+TYPE=eth
+BOOTPROTO=static
+CONFIG_IPv4=yes
+vim /etc/net/ifaces/ens20/ipv4address
+192.168.2.10/28
+vim /etc/net/ifaces/ens20/ipv4route
+default via 192.168.2.1
+systemctl restart network
+HQ-RTR
+en
+conf t
+interface int0
+	description “to isp”
+	ip address 172.16.4.4/28
+	exit
+port te0
+	service-instance te0/int0
+		encapsulation untagged
+		connect ip interface int0
+		exit
+	exit
+interface int1
+	description “to hq-srv”
+	ip address 192.168.1.1/26
+	exit
+interface int2
+	description “to hq-cli”
+	ip address 192.168.2.1/28
+	exit
+port te1
+	service-instance te1/int1
+		encapsulation dot1q 100
+		rewrite pop 1
+		connect ip interface int1
+		exit
+	service-instance te1/int2
+		encapsulation dot1q 200
+		rewrite pop 1
+		connect ip interface int2
+		exit
+	exit
+ip route 0.0.0.0 0.0.0.0 172.16.4.1
+write memory
+BR-RTR
+en
+conf t
+interface int0
+	description “to isp”
+	ip address 172.16.5.5/28
+	exit
+port te0
+	service-instance te0/int0
+		encapsulation untagged
+		connect ip interface int0
+		exit
+	exit
+interface int1
+	description “to br-srv”
+	ip address 192.168.3.1/27
+	exit
+port te1
+	service-instance te1/int1
+		encapsulation untagged
+		connect ip interface int1
+		exit
+	exit
+ip route 0.0.0.0 0.0.0.0 172.16.5.1
+write memory
+ 
+2. Настройка ISP
+
+mkdir /etc/net/ifaces/ens20
+mkdir /etc/net/ifaces/ens21
+mkdir /etc/net/ifaces/ens22
+vim /etc/net/ifaces/ens20/options
+DISABLED=no
+TYPE=eth
+BOOTPROTO=dhcp
+CONFIG_IPv4=yes
+cp /etc/net/ifaces/ens20/options /etc/net/ifaces/ens21
+cp /etc/net/ifaces/ens20/options /etc/net/ifaces/ens22
+vim /etc/net/ifaces/ens21/ipv4address
+172.16.4.1/28
+vim /etc/net/ifaces/ens21/options
+BOOTPROTO=static
+vim /etc/net/ifaces/ens22/options
+BOOTPROTO=static
+vim /etc/net/ifaces/ens22/ipv4address
+172.16.5.1/28
+vim /etc/net/sysctl.conf
+net.ipv4.ip_forward = 1
+systemctl restart network
+ 
+3. Создание пользователей
+
+HQ-SRV
+useradd sshuser -u 1010
+passwd sshuser
+P@ssw0rd
+P@ssw0rd
+visudo
+WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL
+gpasswd -a “sshuser” wheel
+
+BR-SRV
+useradd sshuser
+passwd sshuser
+P@ssw0rd
+P@ssw0rd
+visudo
+WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL
+gpasswd -a “sshuser” wheel
+
+HQ-RTR
+en
+conf t
+username net_admin
+password P@ssw0rd
+role admin
+exit
+write memory
+BR-RTR
+en
+conf t
+username net_admin
+password P@ssw0rd
+role admin
+	exit
+write memory  
+4. Настройте на интерфейсе HQ-RTR в сторону офиса HQ виртуальный коммутатор:
+
+HQ-RTR
+en
+conf t
+interface int3
+	description “999”
+	ip address 192.168.99.1/29
+	exit
+port te1
+	service-instance te1/int3
+		encapsulation dot1q 999
+		rewrite pop 1
+		exit
+	exit
+interface int3
+	connect port te1 service-instance te1/int3
+	exit
+write memory
+ 
+
+5. Настройка безопасного удаленного доступа 
+на серверах HQ-SRV и BR-SRV
+
+HQ-SRV
+vim /etc/openssh/sshd_config
+Port 2024
+AllowUsers	sshuser
+MaxAuthTries 2
+PasswordAuthentication yes
+Banner /etc/openssh/banner
+vim /etc/openssh/banner
+Authorized access only
+systemctl restart sshd
+
+BR-SRV
+vim /etc/openssh/sshd_config
+Port 2024
+AllowUsers	sshuser
+MaxAuthTries 2
+PasswordAuthentication yes
+Banner /etc/openssh/banner
+vim /etc/openssh/banner
+Authorized access only
+systemctl restart sshd
+
+ 
+6. Между офисами HQ и BR необходимо 
+сконфигурировать IP туннель
+
+HQ-RTR
+en
+conf t
+int tunnel.0
+ip add 172.16.0.1/30
+ip mtu 1400
+ip tunnel 172.16.4.4 172.16.5.5 mode gre
+ip ospf authentication-key ecorouter
+exit
+write memory
+
+BR-RTR
+en
+conf t
+int tunnel.0
+ip add 172.16.0.2/30
+ip mtu 1400
+ip tunnel 172.16.5.5 172.16.4.4 mode gre
+ip ospf authentication-key ecorouter
+	exit
+write memory
+ 
+7. Обеспечьте динамическую маршрутизацию
+
+HQ-RTR
+en
+conf t
+router ospf 1
+	network 172.16.0.0/30 area 0
+	network 192.168.1.0/26 area 0
+	network 192.168.2.0/28 area 0
+	passive-interface default
+	no passive-interface tunnel.0
+	area 0 authentication
+exit
+write memory
+
+BR-RTR
+en
+conf t
+router ospf 1
+network 172.16.0.0/30 area 0
+network 192.168.3.0/27 area 0
+passive-interface default
+no passive-interface tunnel.0
+area 0 authentication
+exit
+write memory
+
+ 
+8. Настройка динамической трансляции адресов
+
+ISP
+apt-get update 
+apt-get install iptables -y
+iptables -t nat -A POSTROUTING -o ens20 -s 172.16.4.0/28 -j MASQUERADE
+iptables -t nat -A POSTROUTING -o ens20 -s 172.16.5.0/28 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
+systemctl enable –-now iptables
+
+HQ-RTR
+en
+conf t
+int int1
+	ip nat inside
+	exit
+int int2
+	ip nat inside
+	exit
+int int0
+	ip nat outside
+	exit
+ip nat pool NAT_POOL 192.168.1.1-192.168.1.254,192.168.2.1-192.168.2.254
+ip nat source dynamic inside-to-outside pool NAT_POOL overload interface int0
+write memory
+exit
+ping 8.8.8.8
+
+BR-RTR
+en
+conf t
+int int1
+	ip nat inside
+	exit
+int int0
+	ip nat outside
+	exit
+ip nat pool NAT_POOL 192.168.3.1-192.168.3.254
+ip nat source dynamic inside-to-outside pool NAT_POOL overload interface int0
+exit
+write 
+ping 8.8.8.8
+HQ-SRV 
+vim /etc/resolv.conf
+nameserver 8.8.8.8
+
+HQ-CLI
+vim /etc/resolv.conf
+nameserver 8.8.8.8
+
+BR-SRV
+vim /etc/resolv.conf
+nameserver 8.8.8.8
+
+ 
+
+9. Настройка протокола динамической конфигурации хостов
+
+HQ-RTR
+en
+conf t
+ip pool cli_pool 192.168.2.10-192.168.2.10
+dhcp-server 1
+		pool cli_pool 1
+		mask 255.255.255.240
+		gateway 192.168.2.1
+		dns 192.168.1.10
+		domain-name au-team.irpo
+		exit
+exit
+interface int2
+	dhcp-server 1
+	exit
+write
+
+HQ-CLI
+
+rm -rf /etc/net/ifaces/ens20/options
+rm -rf /etc/net/ifaces/ens20/ipv4address
+rm -rf /etc/net/ifaces/ens20/ipv4route
+vim /etc/net/ifaces/ens20/options
+TYPE=eth
+BOOTPROTO=dhcp
+systemctl restart network
+ip -c a
+
+ 
+10. Настройка DNS для офисов HQ и BR
+
+HQ-SRV
+
+apt-get update
+apt-get install dnsmasq –y
+systemctl enable --now dnsmasq
+systemctl status dnsmasq
+vim /etc/dnsmasq.conf
+no-resolv
+domain=au-team.irpo
+server=8.8.8.8
+interface=*
+
+address=/hq-rtr.au-team.irpo/192.168.1.1
+ptr-record=1.1.168.192.in-addr.arpa,hq-rtr.au-team.irpo
+cname=moodle.au-team.irpo,hq-rtr.au-team.irpo
+cname=wiki.au-team.irpo,hq-rtr.au-team.irpo
+
+address=/br-rtr.au-team.irpo/192.168.3.1
+address=/hq-srv.au-team.irpo/192.168.1.10
+ptr-record=10.1.168.192.in-addr.arpa,hq-srv.au-team.irpo
+
+address=/hq-cli.au-team.irpo/192.168.2.10
+ptr-record=10.2.168.192.in-addr.arpa,hq-cli.au-team.irpo
+address=/br-srv.au-team.irpo/192.168.3.10
+vim /etc/hosts
+192.168.1.1		hq-rtr.au-team.irpo
+systemctl restart dnsmasq
+
+ping google.com
+ping hq-rtr.au-team.irpo
+
+HQ-CLI
+dig moodle.au-team.irpo
+dig wiki.au-team.irpo
+ 
+11. Настройте часовой пояс на всех устройствах
+
+HQ-SRV
+
+timedatectl set-timezone Asia/Yekaterinburg
+timedatectl
+
+HQ-CLI
+
+timedatectl set-timezone Asia/Yekaterinburg
+timedatectl
+
+BR-SRV
+
+timedatectl set-timezone Asia/Yekaterinburg
+timedatectl
+
+ISP
+
+apt-get update
+apt-get reinstall tzdata
+timedatectl set-timezone Asia/Yekaterinburg
+timedatectl
+
+HQ-RTR
+en
+conf t
+ntp timezone utc+5
+exit
+show ntp timezone
+write memory
+
+BR-RTR
+en
+conf t
+ntp timezone utc+5
+exit
+show ntp timezone
+write memory

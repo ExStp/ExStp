@@ -1,0 +1,481 @@
+Модуль 2.
+2-1. Настройте доменный контроллер Samba на машине BR-SRV
+BR-SRV
+apt-get update
+apt-get install task-samba-dc -y
+vim /etc/resolv.conf
+nameserver 192.168.1.10
+rm -rf /etc/samba/smb.conf
+vim /etc/hosts
+192.168.3.10		br-srv.au-team.irpo
+HQ-SRV
+vim /etc/dnsmasq.conf
+server=/au-team.irpo/192.168.3.10
+systemctl restart dnsmasq
+BR-SRV
+samba-tool domain provision
+AU-TEAM.IRPO
+AU-TEAM
+dc
+SAMBA_INTERNAL
+192.168.1.10
+P@ssw0rd
+P@ssw0rd
+mv -f /var/lib/samba/private/krb5.conf /etc/krb5.conf
+systemctl enable --now samba
+samba-tool domain info 127.0.0.1
+samba-tool user add user1.hq P@ssw0rd
+samba-tool user add user2.hq P@ssw0rd
+samba-tool user add user3.hq P@ssw0rd
+samba-tool user add user4.hq P@ssw0rd
+samba-tool user add user5.hq P@ssw0rd
+samba-tool group add hq
+samba-tool group addmembers hq user1.hq,user2.hq,user3.hq,user4.hq,user5.hq
+HQ-CLI
+Menu->acc->Authentication
+Active Directory Domain
+Domain: AU-TEAM.IRPO
+Workgroup: AU-TEAM
+Computer name: hq-cli
+check: Restore default
+Administrator
+P@ssw0rd
+BR-SRV
+apt-repo add rpm http://altrepo.ru/local-p10 noarch local-p10
+apt-get update
+apt-get install sudo-samba-schema -y
+sudo-schema-apply
+yes
+Administrator
+P@ssw0rd
+P@ssw0rd
+ok
+create-sudo-rule
+Имя правила : prava_hq
+sudoHost : ALL
+sudoCommand : /bin/cat
+sudoUser : %hq
+HQ-CLI
+apt-get update
+apt-get install admc -y
+kinit administrator
+P@ssw0rd
+admc
+Preferences->Advanced Features->au-team.irpo-sudoers->prava_hq->attributes->sudoOption
+!authenticate
+Preferences->Advanced Features->au-team.irpo-sudoers->prava_hq->attributes->sudoCommand
+/bin/cat
+/bin/grep
+/usr/bin/id
+apt-get install sudo libsss_sudo
+control sudo public
+vim /etc/sssd/sssd.conf
+services = nss, pam, sudo
+sudo_provider = ad
+vim /etc/nsswitch.conf
+sudoers: files sss
+reboot
+rm -rf /var/lib/sss/db/*
+sss_cache -E
+systemctl restart sssd
+Ctrl+Alt+F2 (user1.hq)
+sudo -l -U user1.hq
+sudo cat /etc/passwd | sudo grep root && sudo id root
+BR-SRV
+curl -L https://bit.ly/3C1nEYz > /root/users.zip
+unzip /root/users.zip
+mv /root/Users.csv /opt/Users.csv
+vim import
+#!/bin/bash
+csv_file=”/opt/Users.csv”
+while IFS=”;” read -r firstName lastName role phone ou street zip city country password; do
+if [ “$firstName” == “First Name” ]; then
+continue
+fi
+username=”${firstName,,}.${lastName,,}”
+sudo samba-tool user add “$username” P@ssw0rd
+done < “$csv_file”
+chmod +x /root/import
+bash /root/import
+
+ 
+2-2. Сконфигурируйте файловое хранилище
+HQ-SRV
+lsblk
+mdadm --create /dev/md0 --level=5 --raid-devices=3 /dev/sd[b-d]
+mdadm --detail --scan --verbose > /etc/mdadm.conf
+apt-get update && apt-get install fdisk -y
+fdisk /dev/md0
+n Enter x3 w
+mkfs.ext4 /dev/md0p1
+vim /etc/fstab
+/dev/md0p1	/raid5	ext4		defaults		0	0
+mkdir /raid5
+mount -a
+apt-get install nfs-server -y
+mkdir /raid5/nfs
+chown 99:99 /raid5/nfs
+chmod 777 /raid5/nfs
+vim /etc/exports
+/raid5/nfs 192.168.2.0/28(rw,sync,no_subtree_check)
+exportfs -a
+exportfs -v
+systemctl enable nfs
+systemctl restart nfs
+HQ-CLI
+apt-get update
+apt-get install nfs-clients -y
+mkdir -p /mnt/nfs
+vim /etc/fstab
+192.168.1.10:/raid5/nfs	/mnt/nfs		nfs		intr,soft,_netdev,x-systemd.automount		0	0
+mount -a
+mount -v
+touch /mnt/nfs/test 
+3. Настройте службу сетевого времени на базе сервиса chrony
+
+ISP
+apt-get install chrony -y
+vim /etc/chrony.conf
+# pool, makestep, rtcsync, ntsdumpdir
+server 127.0.0.1 iburst prefer
+hwtimestamp *
+local stratum 5
+allow 0/0
+systemctl enable --now chronyd
+systemctl restart chronyd
+chronyc sources
+chronyc tracking | grep Stratum
+timedatectl set-timzone Asia/Yekaterinburg
+
+HQ-RTR
+en
+conf t
+ntp server 172.16.4.1
+ntp timezone utc+5
+exit
+show ntp status
+write memory
+
+BR-RTR
+en
+conf t
+ntp server 172.16.5.1
+ntp timezone utc+5
+exit
+show ntp status
+write memory
+
+BR-SRV
+apt-get install chrony -y
+vim /etc/chrony.conf
+# pool, makestep, rtcsync, ntsdumpdir
+server 172.16.5.1 iburst prefer
+systemctl enable --now chronyd
+systemctl restart chronyd
+timedatectl set-timzone Asia/Yekaterinburg
+chronyc sources
+timedatectl
+
+HQ-SRV
+apt-get install chrony -y
+vim /etc/chrony.conf
+# pool, makestep, rtcsync, ntsdumpdir
+server 172.16.4.1 iburst prefer
+systemctl enable --now chronyd
+systemctl restart chronyd
+timedatectl set-timezone Asia/Yekaterinburg
+chronyc sources
+timedatectl
+
+HQ-CLI
+apt-get install chrony -y
+vim /etc/chrony.conf
+# pool, makestep, rtcsync, ntsdumpdir
+server 172.16.4.1 iburst prefer
+systemctl enable --now chronyd
+systemctl restart chronyd
+timedatectl set-timezone Asia/Yekaterinburg
+chronyc sources
+timedatectl
+
+ 
+4. Сконфигурируйте ansible на сервере BR-SRV
+
+BR-SRV
+apt-get install ansible -y
+vim /etc/ansible/hosts
+VMs:
+ hosts:
+  HQ-SRV:
+   ansible_host: 192.168.1.10
+   ansible_user: sshuser
+   ansible_port: 2024
+  HQ-CLI:
+   ansible_host: 192.168.2.10
+   ansible_user: sshuser
+   ansible_port: 2024
+  HQ-RTR:
+   ansible_host: 192.168.1.1
+   ansible_user: net_admin
+   ansible_password: P@ssw0rd
+   ansible_connection: network_cli
+   ansible_network_os: ios
+  BR-RTR
+   ansible_host: 192.168.1.1
+   ansible_user: net_admin
+   ansible_password: P@ssw0rd
+   ansible_connection: network_cli
+   ansible_network_os: ios
+vim /etc/ansible/ansible.cfg
+[defaults]
+ansible_python_interpreter=/usr/bin/python3
+interpreter_python=auto_silent
+ansible_host_key_checking=false
+
+HQ-CLI
+useradd sshuser –u 1010
+passwd sshuser
+P@ssw0rd
+P@ssw0rd
+visudo
+WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL
+gpasswd -a “sshuser” wheel
+ vim /etc/openssh/sshd_config
+Port 2024
+AllowUsers sshuser
+MaxAuthTries 2
+PasswordAuthentication yes
+Banner /etc/openssh/banner
+vim /etc/openssh/banner
+Authorized access only
+systemctl restart sshd
+BR-SRV
+ssh-keygen -t rsa
+ssh-copy-id -p 2024 sshuser@192.168.1.10
+ssh-copy-id -p 2024 sshuser@192.168.2.10
+ansible all -m ping
+ 
+
+5. Развертывание приложений в Docker на сервере BR-SRV.
+
+BR-SRV
+
+apt-get install docker-compose docker-engine -y
+systemctl enable --now docker
+systemctl status docker
+docker pull mediawiki
+docker pull mariadb
+vim /root/wiki.yml 
+services:
+ mariadb:
+  image: mariadb
+  container_name: mariadb
+  restart: always
+  environment:
+   MYSQL_ROOT_PASSWORD: P@ssw0rd
+   MYSQL_DATABASE: mediawiki
+   MYSQL_USER: wiki
+   MYSQL_PASSWORD: P@ssw0rd
+  volumes: [ mariadb_data:/var/lib/mysql ]
+ wiki:
+  image: mediawiki
+  container_name: wiki
+  restart: always
+  environment:
+   MEDIAWIKI_DB_HOST: mariadb
+   MEDIAWIKI_DB_USER: wiki
+   MEDIAWIKI_DB_PASSWORD: P@ssw0rd
+   MEDIAWIKI_DB_NAME: mediawiki
+  ports:
+   - "8080:80"
+  #volumes: [ /root/mediawiki/LocalSettings.php:/var/www/html/LocalSettings.php ]
+volumes:
+ mariadb_data:
+docker compose -f /root/wiki.yml up -d
+
+HQ-CLI
+systemctl restart network
+FireFox > http://192.168.3.10:8080
+Setup MediaWiki
+Язык - Русский
+Хост базы данных - mariadb
+Имя базы данных - mediawiki
+Имя пользователя - wiki
+Пароль - P@ssw0rd
+Название вики - Wiki
+Имя участника - wiki
+Пароль - WikiP@ssw0rd
+•	Хватит уже, просто установить вики.
+scp -P 2024 /home/user/Downloads/LocalSettings.php sshuser@192.168.3.10:/home/sshuser/
+
+BR-SRV
+rm -rf /root/LocalSettings.php
+mkdir /root/mediawiki
+mv /home/sshuser/LocalSettings.php /root/mediawiki/
+vim /root/wiki.yml раскоментировать строку
+docker compose -f /root/wiki.yml up -d
+systemctl restart docker
+
+ 
+6. На маршрутизаторах сконфигурируйте статическую трансляцию портов
+
+BR-RTR
+en
+conf t
+ip nat source static tcp 192.168.3.10 8080 172.16.5.5 80
+ip nat source static tcp 192.168.3.10 2024 172.16.5.5 2024
+exit
+write memory
+
+HQ-RTR
+en
+conf t
+ip nat source static tcp 192.168.1.10 2024 172.16.4.4 2024
+exit
+write memory
+
+HQ-CLI
+ssh -p 2024 sshuser@172.16.5.5
+firefox -> http://172.16.5.5/
+BR-SRV
+ssh -p 2024 sshuser@172.16.4.4
+
+ 
+7. Запустить сервис moodle на сервере HQ-SRV.
+
+HQ-SRV
+apt-get update
+apt-get install 
+
+apache2
+apache2-mod_php8.2
+
+mariadb-server 
+
+php8.2
+php8.2-curl 
+php8.2-zip 
+php8.2-mysqli 
+php8.2-mbstring
+
+
+php8.2-json 
+php8.2-fileinfo 
+php8.2-xml 
+
+php8.2-soap 
+php8.2-xmlrpc 
+
+php8.2-sodium
+
+php8.2-ldap 
+
+php8.2-gd 
+
+php8.2-intl 
+
+
+php8.2-opcache 
+
+php8.2-xmlreader 
+
+systemctl enable -–now httpd2 mysqld
+
+mysql_secure_installation
+Enter
+Y
+P@ssw0rd
+Y
+
+mariadb -u root -p
+CREATE DATABASE moodledb;
+CREATE USER moodle IDENTIFIED BY ‘P@ssw0rd’;
+GRANT ALL PRIVILEGES ON moodledb.* TO moodle;
+FLUSH PRIVILEGES;
+exit
+
+curl -L https://github.com/moodle/moodle/archive/refs/tags/v4.5.0.zip > /root/moodle.zip
+
+unzip /root/moodle.zip
+mv /root/moodle-4.5.0/* /var/www/html/
+rm /var/www/html/index.html
+ls /var/www/html
+
+mkdir /var/www/moodledata
+chown apache2:apache2 /var/www/html
+chown apache2:apache2 /var/www/moodledata
+
+vim /etc/php/8.2/apache2-mod_php/php.ini
+/max_input_vars
+max_input_vars = 5000
+
+systemctl restart httpd2
+
+HQ-CLI
+
+http://192.168.1.10/install.php
+
+Название базы данных:		moodledb
+Пользователь базы данных:	moodle
+Пароль:				P@ssw0rd
+
+далее
+Логин:			admin
+Новый пароль:		P@ssw0rd
+Имя:			Администратор 
+Фамилия:		Пользователь 
+Адрес электронной 	test.test@mail.ru
+
+Полное название сайта:	moodle 
+Краткое сайта:		site
+Настройки 		Азия/Екат 
+Контакты поддержки:	test.test@mail.ru
+
+ 
+8. Настройте веб-сервер nginx как обратный прокси-сервер на HQ-SRV.
+(ЧЕРНОВИК)
+HQ-SRV
+vim /var/www/html/config.php
+$CFG->wwwroot	= ‘http://moodle.au-team.irpo’;
+vim /etc/dnsmasq.conf
+cname=moodle.au-team.irpo,hq-cli.au-team.irpo
+cname=wiki.au-team.irpo,hq-cli.au-team.irpo
+vim /etc/hosts
+192.168.2.10		hq-cli.au-team.irpo
+systemctl restart dnsmasq
+HQ-CLI
+apt-get install nginx
+vim /etc/nginx/sites-available.d/proxy.conf
+server {
+listen 80;
+server_name moodle.au-team.irpo;
+location / {
+proxy_pass http://192.168.1.10:80;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP  $remote_addr;
+proxy_set_header X-Forwarded-For $remote_addr;
+}
+}
+server {
+listen 80;
+server_name wiki.au-team.irpo;
+location / {
+proxy_pass http://192.168.3.10:8080;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP  $remote_addr;
+proxy_set_header X-Forwarded-For $remote_addr;
+}
+}
+rm -rf /etc/nginx/sites-available.d/default.conf
+ln -s /etc/nginx/sites-available.d /proxy.conf/etc/nginx/sites-enabled.d/
+ls -la /etc/nginx/sites-enabled
+systemctl restart nginx
+FireFox > http://moodle.au-team.irpo
+FireFox > http://wiki.au-team.irpo
+
+ 
+9. Установите Яндекс браузер.
+
+HQ-CLI
+apt-get install yandex-browser-stable
+
