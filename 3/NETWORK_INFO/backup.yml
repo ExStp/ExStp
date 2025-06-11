@@ -1,0 +1,13 @@
+- name: Backup data
+  hosts: routers
+  gather_facts: no
+  
+  tasks:
+    - name: Get running-config info from routers
+      ios_command:
+        commands: show running-config
+      register: config
+    - name: Save config
+      copy:
+        content: "{{ config_stdout[0] }}"
+        dest: "/etc/ansible/NETWORK_INFO/{{ ansible_hostname }}.yml"
