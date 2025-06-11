@@ -1,0 +1,8 @@
+- name: Backup data
+  hosts: routers
+  gather_facts: no
+  tasks:
+    - name: get 'sho run'
+      ios_command:
+        commands: show running-config
+      register: config
