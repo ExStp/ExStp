@@ -1,13 +1,41 @@
-- name: Backup data
-  hosts: routers
+---
+- name: Резервное копирование конфигурации маршрутизаторов HQ-RTR и BR-RTR
+  hosts:
+  - hq-rtr
+  - br-rtr
   gather_facts: no
-  
   tasks:
-    - name: Get running-config info from routers
-      ios_command:
-        commands: show running-config
-      register: config
-    - name: Save config
-      copy:
-        content: "{{ config_stdout[0] }}"
-        dest: "/etc/ansible/NETWORK_INFO/{{ ansible_hostname }}.yml"
+
+    - name: Создание локальных папок для резервных копий
+      ansible.builtin.file:
+        path: "/etc/ansible/NETWORK_INFO/{{ inventory_hostname }}/{{ item }}"
+        state: directory
+      loop:
+        - "frr"
+      delegate_to: localhost
+
+    - name: Копирование конфигурации FRR
+      ansible.builtin.fetch:
+        src: "/etc/frr/{{ item }}"
+        dest: "/etc/ansible/NETWORK_INFO/{{ inventory_hostname }}/frr/"
+        flat: yes
+      loop:
+        - "daemons"
+        - "frr.conf"
+        - "frr.conf.sav"
+        - "vtysh.conf"
+      become: yes
+
+    - name: Копирование сохранённых правил iptables
+      ansible.builtin.fetch:
+        src: /etc/iptablesRules
+        dest: /etc/ansible/NETWORK_INFO/{{ inventory_hostname }}/iptablesRules
+        flat: yes
+      become: yes
+
+    - name: Копирование конфигурации сетевых интерфейсов
+      ansible.builtin.fetch:
+        src: /etc/network/interfaces
+        dest: /etc/ansible/NETWORK_INFO/{{ inventory_hostname }}/interfaces
+        flat: yes
+      become: yes
