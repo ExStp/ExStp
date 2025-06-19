@@ -299,6 +299,21 @@ docker run -d \
   quay.io/prometheus/node-exporter:latest \
   --path.rootfs=/host
 
+На устройстве HQ-SRV запустить docker-compose файл,
+добавить запись в /etc/dnsmasq.conf
+
+server {
+    listen 80;
+    server_name mon.au-team.irpo;
+
+    location / {
+        proxy_pass http://192.168.1.2:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+}
+
 8.	Реализуйте механизм инвентаризации машин HQ-SRV и HQ-CLI через Ansible на BR-SRV
 Для начала необходимо создать каталог, в котором будут размещены отчеты о рабочих местах:
 mkdir /etc/ansible/PC_INFO
