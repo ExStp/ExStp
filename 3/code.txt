@@ -229,6 +229,7 @@ $template RemoteLogs, "/opt/%HOSTNAME%/rsyslog.txt"
 systemctl enable rsyslog
 systemctl restart rsyslog
 Сервер для приема логов настроен, переходим к настройке клиентов. Начнем с роутеров.
+
 На HQ-RTR уже предустановлен пакет rsyslog, поэтому сразу перейдем к редактированию 
 конфига /etc/rsyslog.conf
 В блоке MODULES необходимо раскомментировать модули, которые обеспечивают поддержку логирования. 
@@ -241,7 +242,9 @@ imjournal придется дописать вручную.
  
 Теперь перезапускаем службу rsyslog, чтобы применить изменения.
 systemctl restart rsyslog
+
 На BR-RTR нужно повторить аналогично.
+
 Переходим к BR-SRV, здесь настройка почти такая же.
 Установим на BR-SRV пакет rsyslog:
 apt-get install rsyslog rsyslog-journal
