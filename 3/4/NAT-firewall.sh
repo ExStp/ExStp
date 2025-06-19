@@ -10,4 +10,3 @@ iptables -A INPUT -i eth0 -m state --state NEW -j DROP
 iptables -A OUTPUT -j ACCEPT
 iptables-save > /root/rules
 iptables -L -v
-ipsec status

@@ -92,7 +92,8 @@ conn tunnel
 	keyexchange=ikev2
 	auto=start
 	mark=1
-	type=tunnel esp=aes256-sha256-modp1024
+	type=tunnel 
+    esp=aes256-sha256-modp1024
  
 Снова переходим к ipsec.secrets:
 mcedit /etc/ipsec.secrets
