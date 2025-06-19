@@ -1,11 +1,10 @@
 #!/bin/bash
 
-sed -i 's/^#module(load="imklog")/module(load="imklog")/' /etc/rsyslog.conf
-sed -i 's/^#module(load="immark")/module(load="immark")/' /etc/rsyslog.conf
+CONFIG="/etc/rsyslog.conf"
 
-# Добавляем вручную модуль imjournal, если его нет
-grep -q 'imjournal' /etc/rsyslog.conf || sed -i '/^module/ a module(load="imjournal")' /etc/rsyslog.conf
-
-echo '*.warning @@192.168.1.2:514' >> /etc/rsyslog.conf
-
+sed -i 's/^module\s*(load="imuxsock")/#module (load="imuxsock")/' "$CONFIG"
+sed -i '/module\s*(load="imjournal")/d' "$CONFIG"
+sed -i '/module\s*(load="immark")/d' "$CONFIG"
+sed -i '/#### MODULES ####/a module (load="imjournal")\nmodule (load="immark")' "$CONFIG"
+echo '*.warning @@192.168.1.2:514' >> "$CONFIG"
 systemctl restart rsyslog
