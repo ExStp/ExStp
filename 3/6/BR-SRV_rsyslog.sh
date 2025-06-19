@@ -1,5 +1,7 @@
 #!/bin/bash
 
+apt-get install -y rsyslog rsyslog-journal
+
 CONFIG="/etc/rsyslog.d/00_common.conf"
 sed -i 's/^module\s*(load="imuxsock")/#module (load="imuxsock")/' "$CONFIG"
 sed -i '/module\s*(load="imjournal")/d' "$CONFIG"
