@@ -28,7 +28,7 @@
 
     - name: Копирование сохранённых правил iptables
       ansible.builtin.fetch:
-        src: /etc/iptablesRules
+        src: /root/rules
         dest: /etc/ansible/NETWORK_INFO/{{ inventory_hostname }}/iptablesRules
         flat: yes
       become: yes
